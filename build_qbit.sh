@@ -6,7 +6,19 @@ set -e
 QBT_VERSION="5.2.4"
 ARCHIVE_URL="https://sourceforge.net/projects/qbittorrent/files/qbittorrent/qbittorrent-${QBT_VERSION}/qbittorrent-${QBT_VERSION}.tar.xz/download"
 
-echo "=== Step 1: Detecting Operating System & Package Manager ==="
+echo "=== Step 1: Sanitizing environment to prevent external library/linking conflicts ==="
+# Strip Linuxbrew or other conflicting paths from environment variables if present
+if [ -d "/home/linuxbrew/.linuxbrew" ]; then
+    echo "Detected Linuxbrew. Sanitizing environment variables..."
+    export PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "/home/linuxbrew/.linuxbrew" | tr '\n' ':')
+    export LD_LIBRARY_PATH=$(echo "$LD_LIBRARY_PATH" | tr ':' '\n' | grep -v "/home/linuxbrew/.linuxbrew" | tr '\n' ':')
+    export LIBRARY_PATH=$(echo "$LIBRARY_PATH" | tr ':' '\n' | grep -v "/home/linuxbrew/.linuxbrew" | tr '\n' ':')
+    export C_INCLUDE_PATH=$(echo "$C_INCLUDE_PATH" | tr ':' '\n' | grep -v "/home/linuxbrew/.linuxbrew" | tr '\n' ':')
+    export CPLUS_INCLUDE_PATH=$(echo "$CPLUS_INCLUDE_PATH" | tr ':' '\n' | grep -v "/home/linuxbrew/.linuxbrew" | tr '\n' ':')
+    export PKG_CONFIG_PATH=$(echo "$PKG_CONFIG_PATH" | tr ':' '\n' | grep -v "/home/linuxbrew/.linuxbrew" | tr '\n' ':')
+fi
+
+echo "=== Step 2: Detecting Operating System & Package Manager ==="
 if [ -f /etc/os-release ]; then
     . /etc/os-release
     echo "Detected OS: ${NAME}"
@@ -78,21 +90,21 @@ else
     exit 1
 fi
 
-echo "=== Step 2: Downloading qBittorrent v${QBT_VERSION} source code ==="
+echo "=== Step 3: Downloading qBittorrent v${QBT_VERSION} source code ==="
 cd /tmp
 if [ -f "qbittorrent-${QBT_VERSION}.tar.xz" ]; then
     rm -f "qbittorrent-${QBT_VERSION}.tar.xz"
 fi
 curl -L -o "qbittorrent-${QBT_VERSION}.tar.xz" "${ARCHIVE_URL}"
 
-echo "=== Step 3: Extracting source code ==="
+echo "=== Step 4: Extracting source code ==="
 if [ -d "qbittorrent-${QBT_VERSION}" ]; then
     rm -rf "qbittorrent-${QBT_VERSION}"
 fi
 tar -xf "qbittorrent-${QBT_VERSION}.tar.xz"
 cd "qbittorrent-${QBT_VERSION}"
 
-echo "=== Step 4: Conditionally patching source code for modern libtorrent API ==="
+echo "=== Step 5: Conditionally patching source code for modern libtorrent API ==="
 if grep -q "storageParams.path" src/base/bittorrent/customstorage.cpp 2>/dev/null; then
     sed -i 's/const Path savePath {storageParams.path};/const Path savePath {std::string(storageParams.path)};/g' src/base/bittorrent/customstorage.cpp
 fi
@@ -100,16 +112,16 @@ if grep -q "mapped_files" src/base/bittorrent/customstorage.cpp 2>/dev/null; the
     sed -i 's/storageParams.mapped_files ? \*storageParams.mapped_files : storageParams.files/storageParams.files/g' src/base/bittorrent/customstorage.cpp
 fi
 
-echo "=== Step 5: Configuring build with CMake (SSL enabled & Linuxbrew ignored) ==="
+echo "=== Step 6: Configuring build with CMake (SSL enabled & Linuxbrew ignored) ==="
 cmake -G "Ninja" -B build \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DCMAKE_INSTALL_PREFIX=/usr/local \
     -DCMAKE_IGNORE_PATH="/home/linuxbrew/.linuxbrew"
 
-echo "=== Step 6: Compiling qBittorrent ==="
+echo "=== Step 7: Compiling qBittorrent ==="
 cmake --build build -j$(nproc)
 
-echo "=== Step 7: Installing qBittorrent system-wide ==="
+echo "=== Step 8: Installing qBittorrent system-wide ==="
 sudo cmake --install build
 
 echo "=== Installation Complete! ==="
